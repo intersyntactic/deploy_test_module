@@ -42,7 +42,7 @@ packages:
     source: hosted
     version: "2.1.2"
   checked_json:
-    dependency: transitive
+    dependency: "direct main"
     description:
       name: checked_json
       sha256: "6e98ee4c293ee7ed5d1a76411823c7b43aee1fa969b63cb896c519814dbdcfbf"
