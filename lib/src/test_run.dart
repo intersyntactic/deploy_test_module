@@ -6,6 +6,7 @@ import 'package:is_annotation_shapes/is_annotation_shapes.dart'
         VerdictOnShownMessage;
 import 'package:is_conversation_shapes/is_conversation_shapes.dart'
     show SourceMessageId;
+import 'package:is_effects/is_effects.dart' show Outcome, WebResponse;
 import 'package:is_shapes/is_shapes.dart' show ActorId;
 
 import 'test_plan.dart';
@@ -33,6 +34,19 @@ final class AgentCheckFailed extends StepOutcome {
 
   /// What the agent saw instead.
   final String observed;
+
+  @override
+  bool get continuesRun => false;
+}
+
+/// The agent's check was never sent: the airlock refused its fetch, for
+/// [why]. It says nothing of the deploy, only that the run could not test
+/// it, such as when no rule grants the deployed site.
+final class AgentCheckNotRun extends StepOutcome {
+  const AgentCheckNotRun(this.why);
+
+  /// Why the fetch was refused.
+  final String why;
 
   @override
   bool get continuesRun => false;
@@ -136,11 +150,10 @@ final class AgentStepDue extends RunPosition {
   /// The step.
   final AgentStep step;
 
-  /// The run, with [step]'s check having held.
-  TestRun held() => run._with(const AgentCheckHeld());
-
-  /// The run, with [step]'s check having failed, having seen [observed].
-  TestRun failed(String observed) => run._with(AgentCheckFailed(observed));
+  /// The run, with what came of [step]'s check, judged from its fetch's
+  /// [outcome].
+  TestRun checked(Outcome<WebResponse> outcome) =>
+      run._with(step.check.judge(outcome));
 }
 
 /// [step] is due and its person has not been asked yet.
