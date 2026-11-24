@@ -3,6 +3,7 @@ import 'package:is_annotation_shapes/is_annotation_shapes.dart'
 import 'package:is_conversation_shapes/is_conversation_shapes.dart'
     show SourceMessageId;
 import 'package:is_deploy_test_module/is_deploy_test_module.dart';
+import 'package:is_effects/is_effects.dart' show Ran, WebResponse;
 import 'package:is_shapes/is_shapes.dart' show ActorId;
 import 'package:is_web_address_vocabulary/is_web_address_vocabulary.dart'
     show WebPath;
@@ -10,6 +11,7 @@ import 'package:test/test.dart';
 
 void main() {
   final nick = ActorId.parse('slack:T0001/U0NICK')!;
+  const ok = Ran(WebResponse(status: 200));
   final someoneElse = ActorId.parse('slack:T0001/U0OTHER')!;
   SourceMessageId message(String ts) => SourceMessageId.parse('C0001|$ts')!;
   final health = AgentStep(
@@ -30,7 +32,7 @@ void main() {
 
   test('agent then person, both passing, passes', () {
     final run = TestRun.start(TestPlan.of([health, signIn])!);
-    final afterAgent = (run.position as AgentStepDue).held();
+    final afterAgent = (run.position as AgentStepDue).checked(ok);
     final asked = personDue(afterAgent).asked([message('1.1')])!;
     final done = personAsked(asked)
         .judged(nick, message('1.1'), const ApprovedVerdict())!;
@@ -93,7 +95,9 @@ void main() {
 
   test('a failed agent check stops the run before the person is asked', () {
     final due = TestRun.start(TestPlan.of([health, signIn])!).position;
-    final run = (due as AgentStepDue).failed('status 502');
+    final run = (due as AgentStepDue).checked(
+      const Ran(WebResponse(status: 502)),
+    );
     expect(run.position, isA<RunStopped>());
     expect(run.outcomes, hasLength(1));
   });
