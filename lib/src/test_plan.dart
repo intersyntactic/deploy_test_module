@@ -1,3 +1,5 @@
+import 'package:checked_json/checked_json.dart'
+    show JsonFieldException, JsonObject;
 import 'package:is_airlock_api/is_airlock_api.dart' show WebFetch;
 import 'package:is_effects/is_effects.dart'
     show
@@ -11,7 +13,13 @@ import 'package:is_effects/is_effects.dart'
         WebResponse;
 import 'package:is_shapes/is_shapes.dart' show ActorId;
 import 'package:is_web_address_vocabulary/is_web_address_vocabulary.dart'
-    show Origin, WebPath;
+    show
+        Origin,
+        WebPath,
+        decodeOrigin,
+        decodeWebPath,
+        encodeOrigin,
+        encodeWebPath;
 
 import 'test_run.dart'
     show AgentCheckFailed, AgentCheckHeld, AgentCheckNotRun, StepOutcome;
@@ -43,12 +51,47 @@ final class DeployedProjectName {
 
 /// How to test one project's deploy: the site it is deployed to, and the
 /// steps that test it.
+///
+/// As JSON:
+///
+/// ```json
+/// {
+///   "project": "slack-relay",
+///   "deployedTo": "https://relay.example",
+///   "steps": [
+///     {"step": "responseStatusIs", "path": "/health", "status": 200},
+///     {"step": "responseBodyContains", "path": "/health", "text": "ready"},
+///     {"step": "person", "person": "slack:T0001/U024BE7LH",
+///      "instruction": "Mention the bot in a thread; does it answer?"}
+///   ]
+/// }
+/// ```
 final class ProjectTestConfig {
   const ProjectTestConfig({
     required this.project,
     required this.deployedTo,
     required this.plan,
   });
+
+  /// The config [json] holds, read strictly: a field missing, extra or of
+  /// the wrong type, an unknown step, or no steps, is a [FormatException].
+  factory ProjectTestConfig.fromJson(JsonObject json) {
+    _onlyFields(json, const {'project', 'deployedTo', 'steps'}, 'the config');
+    final project = DeployedProjectName.parse(json.string('project'));
+    if (project == null) {
+      throw JsonFieldException('project', 'a project name');
+    }
+    final plan = TestPlan.of([
+      for (final (i, step) in json.objects('steps').indexed)
+        _stepFromJson(step, 'steps[$i]'),
+    ]);
+    if (plan == null) throw JsonFieldException('steps', 'at least one step');
+    return ProjectTestConfig(
+      project: project,
+      deployedTo: decodeOrigin(json.raw('deployedTo'), 'deployedTo'),
+      plan: plan,
+    );
+  }
 
   /// Which project this tests.
   final DeployedProjectName project;
@@ -58,6 +101,85 @@ final class ProjectTestConfig {
 
   /// The steps, in order.
   final TestPlan plan;
+
+  /// This config as JSON, as [ProjectTestConfig.fromJson] reads it back.
+  JsonObject toJson() => JsonObject.of({
+    'project': project.value,
+    'deployedTo': encodeOrigin(deployedTo),
+    'steps': [for (final step in plan.steps) _stepToJson(step)],
+  });
+}
+
+/// The names a step's `step` field takes on the wire.
+const _responseStatusIs = 'responseStatusIs';
+const _responseBodyContains = 'responseBodyContains';
+const _person = 'person';
+
+/// The step [json], at [field] in the config, read strictly.
+TestStep _stepFromJson(JsonObject json, String field) {
+  switch (json.string('step')) {
+    case _responseStatusIs:
+      _onlyFields(json, const {'step', 'path', 'status'}, field);
+      final status = HttpStatusCode.parse(json.integer('status'));
+      if (status == null) {
+        throw JsonFieldException('$field.status', 'a status from 100 to 599');
+      }
+      return AgentStep(
+        ResponseStatusIs(
+          path: decodeWebPath(json.raw('path'), '$field.path'),
+          status: status,
+        ),
+      );
+    case _responseBodyContains:
+      _onlyFields(json, const {'step', 'path', 'text'}, field);
+      return AgentStep(
+        ResponseBodyContains(
+          path: decodeWebPath(json.raw('path'), '$field.path'),
+          text: json.string('text'),
+        ),
+      );
+    case _person:
+      _onlyFields(json, const {'step', 'person', 'instruction'}, field);
+      final person = ActorId.parse(json.string('person'));
+      if (person == null) {
+        throw JsonFieldException('$field.person', 'an actor id');
+      }
+      return PersonStep(
+        person: person,
+        instruction: json.string('instruction'),
+      );
+    case final step:
+      throw FormatException('$field.step is not a step: $step');
+  }
+}
+
+/// [step] as JSON, as [_stepFromJson] reads it back.
+JsonObject _stepToJson(TestStep step) => JsonObject.of(switch (step) {
+  AgentStep(check: ResponseStatusIs(:final path, :final status)) => {
+    'step': _responseStatusIs,
+    'path': encodeWebPath(path),
+    'status': status.value,
+  },
+  AgentStep(check: ResponseBodyContains(:final path, :final text)) => {
+    'step': _responseBodyContains,
+    'path': encodeWebPath(path),
+    'text': text,
+  },
+  PersonStep(:final person, :final instruction) => {
+    'step': _person,
+    'person': person.value,
+    'instruction': instruction,
+  },
+});
+
+/// Throws a [FormatException] naming [what] and the first key of [json]
+/// not in [fields].
+void _onlyFields(JsonObject json, Set<String> fields, String what) {
+  for (final key in json.keys) {
+    if (!fields.contains(key)) {
+      throw FormatException('`$key` is not a field of $what');
+    }
+  }
 }
 
 /// The steps of a test, in the order they are done. Never empty.
