@@ -1,0 +1,21 @@
+name: is_deploy_test_module
+description: >
+  End-to-end testing of a deploy for intersyntactic. A test run is an ordered
+  list of steps, each done by the agent or by a named person. It speaks no
+  chat system itself: it asks people, and posts results, through a chat
+  module such as is_slack_module or is_teams_module.
+version: 0.1.0
+publish_to: none
+
+environment:
+  sdk: ^3.13.0
+
+dependencies:
+  is_annotation_shapes: ^0.3.2
+  is_conversation_shapes: ^0.8.3
+  is_shapes: ^0.6.0
+  is_web_address_vocabulary: ^0.1.1
+
+dev_dependencies:
+  lints: ^6.1.0
+  test: ^1.25.0
