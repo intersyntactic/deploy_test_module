@@ -87,8 +87,8 @@ void main() {
   test('an ask posted only partway stops the run', () {
     final run = runOf([signIn, health]);
     final stopped = personDue(run).notDelivered([message('1.1')]).position;
-    expect(stopped, isA<RunStopped>());
-    expect((stopped as RunStopped).run.outcomes.single, isA<AskNotDelivered>());
+    expect(stopped, isA<RunNotFinished>());
+    expect((stopped as RunNotFinished).because, isA<AskNotDelivered>());
   });
 
   test('a held-off person step stops the run there', () {
@@ -97,7 +97,7 @@ void main() {
     final stopped = asked
         .judged(nick, message('1.1'), const HeldOffVerdict())!
         .position;
-    expect((stopped as RunStopped).stoppedAt, signIn);
+    expect((stopped as RunNotPassed).endedAt, signIn);
   });
 
   test('a failed agent check stops the run before the person is asked', () {
@@ -105,7 +105,7 @@ void main() {
     final run = (due as AgentStepDue).checked(
       const Ran(WebResponse(status: 502)),
     );
-    expect(run.position, isA<RunStopped>());
+    expect(run.position, isA<RunNotPassed>());
     expect(run.outcomes, hasLength(1));
   });
 }

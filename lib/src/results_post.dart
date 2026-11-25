@@ -5,29 +5,27 @@ import 'test_run.dart';
 /// then one line per step with what came of it.
 ///
 /// It is plain text naming no one, so any chat module can post it as it is.
-/// A run that could not be done is said to be one, never a failure: a
-/// refused check or an ask that never arrived says nothing about the deploy.
-String resultsPostText(RunFinished finished) {
-  final run = finished.run;
+/// A run whose step never finished is said to be one, never a failure; one
+/// whose step never reached the site says so, since it says nothing about
+/// the deploy.
+String resultsPostText(RunOver over) {
+  final run = over.run;
   final count = run.steps.length;
   final subject =
       'Deploy test of ${run.config.project} (${run.config.deployedTo})';
-  final headline = switch (finished) {
+  final step = 'step ${run.outcomes.length} of $count';
+  final headline = switch (over) {
     RunPassed() => '$subject passed: all $count steps.',
-    RunStopped(:final because) => switch (because) {
-      AgentCheckFailed() =>
-        '$subject failed at step ${run.outcomes.length} '
-            'of $count.',
-      AgentCheckCutOff() =>
-        '$subject stopped at step ${run.outcomes.length} of $count: the '
-            'check was cut off before a whole response came back.',
-      PersonHeldOff() =>
-        '$subject was held off at step '
-            '${run.outcomes.length} of $count.',
-      AgentCheckNotRun() || AskNotDelivered() =>
-        "$subject couldn't be finished: step ${run.outcomes.length} of "
-            "$count couldn't be done, so this says nothing about the deploy.",
+    RunNotPassed(:final because) => switch (because) {
+      AgentCheckFailed() => '$subject failed at $step.',
+      PersonHeldOff() => '$subject was held off at $step.',
     },
+    RunNotFinished(:final because) =>
+      "$subject didn't finish: $step ${switch (because) {
+        AgentCheckCutOff() => 'was cut off before a whole response came back.',
+        AgentCheckNotRun() => 'was never run, so this says nothing about the deploy.',
+        AskNotDelivered() => 'was never fully asked, so this says nothing about the deploy.',
+      }}",
   };
   return [
     headline,

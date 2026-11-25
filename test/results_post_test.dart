@@ -38,7 +38,7 @@ void main() {
     return (asked.position as PersonStepAsked).judged(nick, ask, verdict)!;
   }
 
-  String textOf(TestRun r) => resultsPostText(r.position as RunFinished);
+  String textOf(TestRun r) => resultsPostText(r.position as RunOver);
 
   final bothChecksPass = agentDoes(
     agentDoes(run, const WebResponse(status: 200)),
@@ -89,9 +89,8 @@ void main() {
     final text = textOf(notRun);
     expect(
       text.split('\n').first,
-      "Deploy test of slack-relay (https://relay.example) couldn't be "
-      "finished: step 1 of 3 couldn't be done, so this says nothing about "
-      'the deploy.',
+      "Deploy test of slack-relay (https://relay.example) didn't finish: "
+      'step 1 of 3 was never run, so this says nothing about the deploy.',
     );
     expect(text, contains('not run, no rule grants https://relay.example'));
     expect(text, isNot(contains('failed')));
@@ -104,8 +103,8 @@ void main() {
     final text = textOf(cutOff);
     expect(
       text.split('\n').first,
-      'Deploy test of slack-relay (https://relay.example) stopped at step 1 '
-      'of 3: the check was cut off before a whole response came back.',
+      "Deploy test of slack-relay (https://relay.example) didn't finish: "
+      'step 1 of 3 was cut off before a whole response came back.',
     );
     expect(
       text,
@@ -120,6 +119,12 @@ void main() {
       const [],
     );
     final text = textOf(undelivered);
+    expect(
+      text.split('\n').first,
+      "Deploy test of slack-relay (https://relay.example) didn't finish: "
+      'step 3 of 3 was never fully asked, so this says nothing about the '
+      'deploy.',
+    );
     expect(
       text,
       contains("3. Person check: Sign in.: not asked, the ask didn't post"),

@@ -12,23 +12,31 @@ import 'package:is_shapes/is_shapes.dart' show ActorId;
 
 import 'test_plan.dart';
 
-/// What came of one step: one the run goes on from ([PassingOutcome]), or
-/// one that stops it ([StoppingOutcome]).
+/// What came of one step: it passed ([PassingOutcome]), it finished with a
+/// result against the deploy ([NotPassingOutcome]), or it never finished
+/// ([NotFinishedOutcome]). The run goes on only from one that passed.
 sealed class StepOutcome {
   const StepOutcome();
 }
 
-/// An outcome the run goes on from: [AgentCheckHeld] or [PersonApproved].
+/// The step passed: [AgentCheckHeld] or [PersonApproved].
 sealed class PassingOutcome extends StepOutcome {
   const PassingOutcome();
 }
 
-/// An outcome that stops the run: the deploy failed a check
-/// ([AgentCheckFailed]), a person held off ([PersonHeldOff]), a check was
-/// cut off partway ([AgentCheckCutOff]), or the step could not be done at
-/// all ([AgentCheckNotRun], [AskNotDelivered]).
-sealed class StoppingOutcome extends StepOutcome {
-  const StoppingOutcome();
+/// The step finished, with a result against the deploy: a check's response
+/// was wrong ([AgentCheckFailed]), or its person answered ❌
+/// ([PersonHeldOff]). Not called failing: whether a ❌ is a failure is not
+/// decided here.
+sealed class NotPassingOutcome extends StepOutcome {
+  const NotPassingOutcome();
+}
+
+/// The step never finished, so there is no result to judge: a check never
+/// sent ([AgentCheckNotRun]) or cut off partway ([AgentCheckCutOff]), or an
+/// ask that never wholly posted ([AskNotDelivered]).
+sealed class NotFinishedOutcome extends StepOutcome {
+  const NotFinishedOutcome();
 }
 
 /// The agent's check held.
@@ -38,7 +46,7 @@ final class AgentCheckHeld extends PassingOutcome {
 
 /// The agent's check did not hold; [observed] is what it saw instead, such
 /// as `status 502`.
-final class AgentCheckFailed extends StoppingOutcome {
+final class AgentCheckFailed extends NotPassingOutcome {
   const AgentCheckFailed(this.observed);
 
   /// What the agent saw instead.
@@ -48,7 +56,7 @@ final class AgentCheckFailed extends StoppingOutcome {
 /// The agent's check was never sent: nothing ran, for [why], such as the
 /// airlock denying the fetch because no rule grants the deployed site. It
 /// says nothing of the deploy, only that the run could not test it.
-final class AgentCheckNotRun extends StoppingOutcome {
+final class AgentCheckNotRun extends NotFinishedOutcome {
   const AgentCheckNotRun(this.why);
 
   /// Why nothing ran.
@@ -60,7 +68,7 @@ final class AgentCheckNotRun extends StoppingOutcome {
 /// [AgentCheckNotRun] it may say something of the deploy, such as a site
 /// that drops the connection, so it is not read as saying nothing; unlike
 /// [AgentCheckFailed] no response was seen to fail.
-final class AgentCheckCutOff extends StoppingOutcome {
+final class AgentCheckCutOff extends NotFinishedOutcome {
   const AgentCheckCutOff(this.why);
 
   /// Why it stopped, as the driver said.
@@ -77,7 +85,7 @@ final class PersonApproved extends PassingOutcome {
 
 /// The step's person answered ❌: they held off, which is what was said, not
 /// a reading of why.
-final class PersonHeldOff extends StoppingOutcome {
+final class PersonHeldOff extends NotPassingOutcome {
   const PersonHeldOff(this.by);
 
   /// Who answered.
@@ -87,7 +95,7 @@ final class PersonHeldOff extends StoppingOutcome {
 /// The ask for a person step was not wholly posted: posting stopped partway,
 /// after [posted], or before anything. The person never saw all of the
 /// instruction, so no reaction to what did post answers the step.
-final class AskNotDelivered extends StoppingOutcome {
+final class AskNotDelivered extends NotFinishedOutcome {
   const AskNotDelivered(this.posted);
 
   /// The messages of the ask that did post, in order, perhaps none.
@@ -121,10 +129,13 @@ final class TestRun {
   /// The steps, in order.
   List<TestStep> get steps => config.plan.steps;
 
-  /// Where the run is: a step due, or finished.
+  /// Where the run is: a step due, or over.
   RunPosition get position {
-    if (outcomes case [..., final StoppingOutcome last]) {
-      return RunStopped._(this, last);
+    switch (outcomes) {
+      case [..., final NotPassingOutcome last]:
+        return RunNotPassed._(this, last);
+      case [..., final NotFinishedOutcome last]:
+        return RunNotFinished._(this, last);
     }
     if (outcomes.length == steps.length) return RunPassed._(this);
     return switch ((steps[outcomes.length], _askedIn)) {
@@ -142,7 +153,7 @@ final class TestRun {
       TestRun._(config, List.unmodifiable([...outcomes, outcome]), null);
 }
 
-/// Where a [TestRun] is: a step due, or finished ([RunFinished]). A step
+/// Where a [TestRun] is: a step due, or over ([RunOver]). A step
 /// that is due is answered through its case, so only the step due can be
 /// answered, and only with an outcome of its kind.
 sealed class RunPosition {
@@ -222,30 +233,46 @@ final class PersonStepAsked extends RunPosition {
   }
 }
 
-/// The run is over: it passed ([RunPassed]) or a step stopped it
-/// ([RunStopped]).
-sealed class RunFinished extends RunPosition {
-  const RunFinished();
+/// The run is over: every step passed ([RunPassed]), a step finished with a
+/// result against the deploy ([RunNotPassed]), or a step never finished
+/// ([RunNotFinished]).
+sealed class RunOver extends RunPosition {
+  const RunOver();
 }
 
-/// Every step was done and none stopped the run.
-final class RunPassed extends RunFinished {
+/// Every step passed.
+final class RunPassed extends RunOver {
   const RunPassed._(this.run);
 
   @override
   final TestRun run;
 }
 
-/// A step stopped the run, [because] of its outcome, the run's last.
-final class RunStopped extends RunFinished {
-  const RunStopped._(this.run, this.because);
+/// A step finished with a result against the deploy, [because], and the run
+/// ended there.
+final class RunNotPassed extends RunOver {
+  const RunNotPassed._(this.run, this.because);
 
   @override
   final TestRun run;
 
-  /// The outcome that stopped it.
-  final StoppingOutcome because;
+  /// What came of the step it ended at.
+  final NotPassingOutcome because;
 
-  /// The step that stopped it.
-  TestStep get stoppedAt => run.steps[run.outcomes.length - 1];
+  /// The step it ended at.
+  TestStep get endedAt => run.steps[run.outcomes.length - 1];
+}
+
+/// A step never finished, [because], and the run ended there.
+final class RunNotFinished extends RunOver {
+  const RunNotFinished._(this.run, this.because);
+
+  @override
+  final TestRun run;
+
+  /// What came of the step it ended at.
+  final NotFinishedOutcome because;
+
+  /// The step it ended at.
+  TestStep get endedAt => run.steps[run.outcomes.length - 1];
 }

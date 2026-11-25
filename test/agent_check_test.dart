@@ -78,7 +78,7 @@ void main() {
         const NothingRan('no rule grants the site'),
       );
       expect((outcome as AgentCheckNotRun).why, 'no rule grants the site');
-      expect(outcome, isA<StoppingOutcome>());
+      expect(outcome, isA<NotFinishedOutcome>());
     });
 
     test('a fetch cut off partway is cut off, neither failed nor not run', () {
@@ -86,7 +86,7 @@ void main() {
         const StoppedPartway<WebResponse>(why: 'connection reset', done: null),
       );
       expect((outcome as AgentCheckCutOff).why, 'connection reset');
-      expect(outcome, isA<StoppingOutcome>());
+      expect(outcome, isA<NotFinishedOutcome>());
     });
   });
 }
