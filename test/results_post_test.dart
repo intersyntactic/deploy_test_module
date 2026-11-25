@@ -32,11 +32,9 @@ void main() {
   );
 
   TestRun agentDoes(TestRun r, WebResponse response) =>
-      (r.position as AgentStepDue).checked(Ran(response));
-  TestRun personSays(TestRun r, VerdictOnShownMessage verdict) {
-    final asked = (r.position as PersonStepDue).asked([ask])!;
-    return (asked.position as PersonStepAsked).judged(nick, ask, verdict)!;
-  }
+      r.after(FetchCameBack(Ran(response)))!;
+  TestRun personSays(TestRun r, VerdictOnShownMessage verdict) =>
+      r.after(AskPostingEnded(Ran([ask])))!.after(Reacted(nick, ask, verdict))!;
 
   String textOf(TestRun r) => resultsPostText(r.position as RunOver);
 
@@ -83,9 +81,9 @@ void main() {
   });
 
   test('a check that never ran says nothing about the deploy', () {
-    final notRun = (run.position as AgentStepDue).checked(
-      const NothingRan('no rule grants https://relay.example'),
-    );
+    final notRun = run.after(
+      const FetchCameBack(NothingRan('no rule grants https://relay.example')),
+    )!;
     final text = textOf(notRun);
     expect(
       text.split('\n').first,
@@ -97,9 +95,11 @@ void main() {
   });
 
   test('a check cut off partway is neither failed nor nothing', () {
-    final cutOff = (run.position as AgentStepDue).checked(
-      const StoppedPartway<WebResponse>(why: 'connection reset', done: null),
-    );
+    final cutOff = run.after(
+      const FetchCameBack(
+        StoppedPartway<WebResponse>(why: 'connection reset', done: null),
+      ),
+    )!;
     final text = textOf(cutOff);
     expect(
       text.split('\n').first,
@@ -115,9 +115,9 @@ void main() {
   });
 
   test('an ask that never posted is not asked, and not a failure', () {
-    final undelivered = (bothChecksPass.position as PersonStepDue).notDelivered(
-      const [],
-    );
+    final undelivered = bothChecksPass.after(
+      const AskPostingEnded(NothingRan('chat module unreachable')),
+    )!;
     final text = textOf(undelivered);
     expect(
       text.split('\n').first,
@@ -133,10 +133,24 @@ void main() {
   });
 
   test('an ask that partly posted says so', () {
-    final partway = (bothChecksPass.position as PersonStepDue).notDelivered([
-      ask,
-    ]);
+    final partway = bothChecksPass.after(
+      AskPostingEnded(
+        StoppedPartway<List<SourceMessageId>>(why: 'rate limited', done: [ask]),
+      ),
+    )!;
     expect(textOf(partway), contains('not asked, the ask only partly posted'));
+  });
+
+  test('a restart mid-step says nothing about the deploy', () {
+    final lost = bothChecksPass.after(const Restarted())!;
+    final text = textOf(lost);
+    expect(
+      text.split('\n').first,
+      "Deploy test of slack-relay (https://relay.example) didn't finish: "
+      'step 3 of 3 was interrupted by a restart, so this says nothing about '
+      'the deploy.',
+    );
+    expect(text, contains('interrupted by a restart while being asked'));
   });
 
   test('the text names no one', () {

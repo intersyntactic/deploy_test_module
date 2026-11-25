@@ -7,7 +7,8 @@ import 'package:is_annotation_shapes/is_annotation_shapes.dart'
         VerdictOnShownMessage;
 import 'package:is_conversation_shapes/is_conversation_shapes.dart'
     show SourceMessageId;
-import 'package:is_effects/is_effects.dart' show Outcome, WebResponse;
+import 'package:is_effects/is_effects.dart'
+    show NothingRan, Outcome, Ran, StoppedPartway, WebResponse;
 import 'package:is_shapes/is_shapes.dart' show ActorId;
 
 import 'test_plan.dart';
@@ -75,6 +76,14 @@ final class AgentCheckCutOff extends NotFinishedOutcome {
   final String why;
 }
 
+/// The agent's check was handed off to be carried out, and the process
+/// restarted before its result came back. The fetch may or may not have
+/// reached the site; it is never sent again, and since the stop was this
+/// run's own, it says nothing of the deploy.
+final class AgentCheckResultLost extends NotFinishedOutcome {
+  const AgentCheckResultLost();
+}
+
 /// The step's person answered ✅.
 final class PersonApproved extends PassingOutcome {
   const PersonApproved(this.by);
@@ -102,13 +111,69 @@ final class AskNotDelivered extends NotFinishedOutcome {
   final List<SourceMessageId> posted;
 }
 
+/// The ask for a person step was handed off to be posted, and the process
+/// restarted before it was known what posted. The person may have seen it,
+/// but no reaction can be matched to messages never learned, so it is never
+/// posted again; it says nothing of the deploy.
+final class AskResultLost extends NotFinishedOutcome {
+  const AskResultLost();
+}
+
+/// Something that happened to a [TestRun], handed to [TestRun.after].
+sealed class RunEvent {
+  const RunEvent();
+}
+
+/// The fetch for the check in flight came back with [outcome].
+final class FetchCameBack extends RunEvent {
+  const FetchCameBack(this.outcome);
+
+  /// What the fetch gave.
+  final Outcome<WebResponse> outcome;
+}
+
+/// Posting the ask in flight ended with [outcome]: the messages that
+/// posted, in order, when it [Ran].
+final class AskPostingEnded extends RunEvent {
+  const AskPostingEnded(this.outcome);
+
+  /// What posting the ask gave.
+  final Outcome<List<SourceMessageId>> outcome;
+}
+
+/// [from] answered [verdict] on message [to].
+final class Reacted extends RunEvent {
+  const Reacted(this.from, this.to, this.verdict);
+
+  /// Who reacted.
+  final ActorId from;
+
+  /// The message reacted to.
+  final SourceMessageId to;
+
+  /// What the reaction says.
+  final VerdictOnShownMessage verdict;
+}
+
+/// The process restarted, so whatever was in flight before it never reports
+/// back. Handed to every saved run before any other event.
+final class Restarted extends RunEvent {
+  const Restarted();
+}
+
 /// One run of a project's [ProjectTestConfig]: the outcome of each step done
 /// so far, in order, and the messages that asked the person step due, once
 /// they are posted.
 ///
-/// Only [TestRun.start] and the answers on its [position] make one, so a
-/// run's outcomes are always of its first steps, one each, each of the kind
-/// its step takes, and none after one that stopped it.
+/// Only [TestRun.start] and [after] make one, so a run's outcomes are always
+/// of its first steps, one each, each of the kind its step takes, and none
+/// after one that stopped it.
+///
+/// Whoever holds a run saves each new one before doing what its [position]
+/// says: carry out the fetch of an [AgentCheckSent], post the ask of a
+/// [PersonAskSent], post the results of a [RunOver]. A saved run that says
+/// something is sent may not have sent it, which is why [Restarted] ends
+/// it rather than sending again.
 final class TestRun {
   const TestRun._(this.config, this.outcomes, this._askedIn);
 
@@ -129,7 +194,27 @@ final class TestRun {
   /// The steps, in order.
   List<TestStep> get steps => config.plan.steps;
 
-  /// Where the run is: a step due, or over.
+  /// The run after [event], or null when [event] changes nothing here, such
+  /// as a reaction from someone other than the step's person, or a fetch
+  /// coming back when no check is in flight.
+  TestRun? after(RunEvent event) => switch ((position, event)) {
+    (final AgentCheckSent p, FetchCameBack(:final outcome)) => p._checked(
+      outcome,
+    ),
+    (final PersonAskSent p, AskPostingEnded(:final outcome)) => p._posted(
+      outcome,
+    ),
+    (
+      final PersonStepAsked p,
+      Reacted(:final from, :final to, :final verdict),
+    ) =>
+      p._judged(from, to, verdict),
+    (AgentCheckSent(), Restarted()) => _with(const AgentCheckResultLost()),
+    (PersonAskSent(), Restarted()) => _with(const AskResultLost()),
+    _ => null,
+  };
+
+  /// Where the run is: a step in flight, or over.
   RunPosition get position {
     switch (outcomes) {
       case [..., final NotPassingOutcome last]:
@@ -139,8 +224,8 @@ final class TestRun {
     }
     if (outcomes.length == steps.length) return RunPassed._(this);
     return switch ((steps[outcomes.length], _askedIn)) {
-      (final AgentStep step, _) => AgentStepDue._(this, step),
-      (final PersonStep step, null) => PersonStepDue._(this, step),
+      (final AgentStep step, _) => AgentCheckSent._(this, step),
+      (final PersonStep step, null) => PersonAskSent._(this, step),
       (final PersonStep step, final askedIn?) => PersonStepAsked._(
         this,
         step,
@@ -153,8 +238,8 @@ final class TestRun {
       TestRun._(config, List.unmodifiable([...outcomes, outcome]), null);
 }
 
-/// Where a [TestRun] is: a step due, or over ([RunOver]). A step
-/// that is due is answered through its case, so only the step due can be
+/// Where a [TestRun] is: a step in flight, or over ([RunOver]). Only
+/// [TestRun.after] moves a run on, so only the step in flight can be
 /// answered, and only with an outcome of its kind.
 sealed class RunPosition {
   const RunPosition();
@@ -163,9 +248,10 @@ sealed class RunPosition {
   TestRun get run;
 }
 
-/// The agent's [step] is due.
-final class AgentStepDue extends RunPosition {
-  const AgentStepDue._(this.run, this.step);
+/// The agent's [step] is in flight: its [fetch] is to be carried out, and
+/// its result handed back as [FetchCameBack].
+final class AgentCheckSent extends RunPosition {
+  const AgentCheckSent._(this.run, this.step);
 
   @override
   final TestRun run;
@@ -176,15 +262,14 @@ final class AgentStepDue extends RunPosition {
   /// The fetch to propose for [step], on the run's deployed site.
   WebFetch get fetch => step.check.fetchFrom(run.config.deployedTo);
 
-  /// The run, with what came of [step]'s check, judged from its fetch's
-  /// [outcome].
-  TestRun checked(Outcome<WebResponse> outcome) =>
+  TestRun _checked(Outcome<WebResponse> outcome) =>
       run._with(step.check.judge(outcome));
 }
 
-/// [step] is due and its person has not been asked yet.
-final class PersonStepDue extends RunPosition {
-  const PersonStepDue._(this.run, this.step);
+/// [step]'s ask is in flight: it is to be posted, and what posted handed
+/// back as [AskPostingEnded].
+final class PersonAskSent extends RunPosition {
+  const PersonAskSent._(this.run, this.step);
 
   @override
   final TestRun run;
@@ -192,15 +277,19 @@ final class PersonStepDue extends RunPosition {
   /// The step.
   final PersonStep step;
 
-  /// The run, with [step] asked in [posted], every message of the ask in
-  /// posting order; null when there are none.
-  TestRun? asked(List<SourceMessageId> posted) => posted.isEmpty
-      ? null
-      : TestRun._(run.config, run.outcomes, List.unmodifiable(posted));
-
-  /// The run, with the ask for [step] posted only as far as [posted].
-  TestRun notDelivered(List<SourceMessageId> posted) =>
-      run._with(AskNotDelivered(List.unmodifiable(posted)));
+  /// Wholly posted in at least one message, the run waits on [step]'s
+  /// person; otherwise the ask was not delivered and the run ends.
+  TestRun _posted(Outcome<List<SourceMessageId>> outcome) => switch (outcome) {
+    Ran(output: [_, ...] && final posted) => TestRun._(
+      run.config,
+      run.outcomes,
+      List.unmodifiable(posted),
+    ),
+    Ran() || NothingRan() => run._with(const AskNotDelivered([])),
+    StoppedPartway(:final done) => run._with(
+      AskNotDelivered(List.unmodifiable(done ?? const <SourceMessageId>[])),
+    ),
+  };
 }
 
 /// [step] has been asked in [askedIn] and is waiting on its person.
@@ -216,10 +305,9 @@ final class PersonStepAsked extends RunPosition {
   /// The messages that asked it, in posting order.
   final List<SourceMessageId> askedIn;
 
-  /// The run, with [verdict] from [from] on message [to] as [step]'s answer;
-  /// null when it is no answer: [to] is not one of [askedIn], [from] is not
+  /// Null when it is no answer: [to] is not one of [askedIn], [from] is not
   /// the step's person, or it proposes a correction.
-  TestRun? judged(
+  TestRun? _judged(
     ActorId from,
     SourceMessageId to,
     VerdictOnShownMessage verdict,
