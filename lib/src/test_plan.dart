@@ -8,7 +8,8 @@ import 'package:is_effects/is_effects.dart'
         NoBody,
         Outcome,
         Ran,
-        Refused,
+        NothingRan,
+        StoppedPartway,
         TextBody,
         WebResponse;
 import 'package:is_shapes/is_shapes.dart' show ActorId;
@@ -22,7 +23,12 @@ import 'package:is_web_address_vocabulary/is_web_address_vocabulary.dart'
         encodeWebPath;
 
 import 'test_run.dart'
-    show AgentCheckFailed, AgentCheckHeld, AgentCheckNotRun, StepOutcome;
+    show
+        AgentCheckCutOff,
+        AgentCheckFailed,
+        AgentCheckHeld,
+        AgentCheckNotRun,
+        StepOutcome;
 
 /// A project whose deploys are tested, by a name such as `slack-relay`: a
 /// lower-case letter, then lower-case letters, digits, `_` or `-`.
@@ -241,10 +247,14 @@ sealed class AgentCheck {
   /// The GET of [path] on [site], under no sign-in.
   WebFetch fetchFrom(Origin site) => WebFetch(site, path: path, keep: keep);
 
-  /// What came of the check, from the fetch's [outcome]. A refused fetch
-  /// was never sent, so it says nothing of the deploy: [AgentCheckNotRun].
+  /// What came of the check, from the fetch's [outcome]. A fetch where
+  /// nothing ran was never sent, so it says nothing of the deploy:
+  /// [AgentCheckNotRun]. One cut off partway may have reached the site, and a
+  /// site dropping or timing out is something about the deploy, so it is
+  /// neither: [AgentCheckCutOff].
   StepOutcome judge(Outcome<WebResponse> outcome) => switch (outcome) {
-    Refused(:final why) => AgentCheckNotRun(why),
+    NothingRan(:final why) => AgentCheckNotRun(why),
+    StoppedPartway(:final why) => AgentCheckCutOff(why),
     Ran(output: final response) => _judgeResponse(response),
   };
 

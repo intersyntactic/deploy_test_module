@@ -1,6 +1,13 @@
 import 'package:is_deploy_test_module/is_deploy_test_module.dart';
 import 'package:is_effects/is_effects.dart'
-    show BodyToKeep, NoBody, Ran, Refused, TextBody, WebResponse;
+    show
+        BodyToKeep,
+        NoBody,
+        NothingRan,
+        Ran,
+        StoppedPartway,
+        TextBody,
+        WebResponse;
 import 'package:is_web_address_vocabulary/is_web_address_vocabulary.dart'
     show Origin, WebPath;
 import 'package:test/test.dart';
@@ -66,9 +73,19 @@ void main() {
       expect((outcome as AgentCheckFailed).observed, 'status 503');
     });
 
-    test('a refused fetch is not run, not failed', () {
-      final outcome = statusOk.judge(const Refused('no rule grants the site'));
+    test('a fetch where nothing ran is not run, not failed', () {
+      final outcome = statusOk.judge(
+        const NothingRan('no rule grants the site'),
+      );
       expect((outcome as AgentCheckNotRun).why, 'no rule grants the site');
+      expect(outcome.continuesRun, isFalse);
+    });
+
+    test('a fetch cut off partway is cut off, neither failed nor not run', () {
+      final outcome = statusOk.judge(
+        const StoppedPartway<WebResponse>(why: 'connection reset', done: null),
+      );
+      expect((outcome as AgentCheckCutOff).why, 'connection reset');
       expect(outcome.continuesRun, isFalse);
     });
   });

@@ -39,13 +39,28 @@ final class AgentCheckFailed extends StepOutcome {
   bool get continuesRun => false;
 }
 
-/// The agent's check was never sent: the airlock refused its fetch, for
-/// [why]. It says nothing of the deploy, only that the run could not test
-/// it, such as when no rule grants the deployed site.
+/// The agent's check was never sent: nothing ran, for [why], such as the
+/// airlock denying the fetch because no rule grants the deployed site. It
+/// says nothing of the deploy, only that the run could not test it.
 final class AgentCheckNotRun extends StepOutcome {
   const AgentCheckNotRun(this.why);
 
-  /// Why the fetch was refused.
+  /// Why nothing ran.
+  final String why;
+
+  @override
+  bool get continuesRun => false;
+}
+
+/// The agent's check was cut off partway, for [why]: the request may have
+/// reached the site, and no whole response came back. Unlike
+/// [AgentCheckNotRun] it may say something of the deploy, such as a site
+/// that drops the connection, so it is not read as saying nothing; unlike
+/// [AgentCheckFailed] no response was seen to fail.
+final class AgentCheckCutOff extends StepOutcome {
+  const AgentCheckCutOff(this.why);
+
+  /// Why it stopped, as the driver said.
   final String why;
 
   @override
