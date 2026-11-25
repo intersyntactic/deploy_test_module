@@ -6,7 +6,7 @@ import 'package:is_deploy_test_module/is_deploy_test_module.dart';
 import 'package:is_effects/is_effects.dart' show Ran, WebResponse;
 import 'package:is_shapes/is_shapes.dart' show ActorId;
 import 'package:is_web_address_vocabulary/is_web_address_vocabulary.dart'
-    show WebPath;
+    show Origin, WebPath;
 import 'package:test/test.dart';
 
 void main() {
@@ -22,6 +22,13 @@ void main() {
   );
   final signIn = PersonStep(person: nick, instruction: 'Sign in.');
   final openThread = PersonStep(person: nick, instruction: 'Open a thread.');
+  TestRun runOf(List<TestStep> steps) => TestRun.start(
+    ProjectTestConfig(
+      project: DeployedProjectName.parse('relay')!,
+      deployedTo: Origin.parse('https://relay.example')!,
+      plan: TestPlan.of(steps)!,
+    ),
+  );
 
   PersonStepDue personDue(TestRun run) => run.position as PersonStepDue;
   PersonStepAsked personAsked(TestRun run) => run.position as PersonStepAsked;
@@ -31,7 +38,7 @@ void main() {
   });
 
   test('agent then person, both passing, passes', () {
-    final run = TestRun.start(TestPlan.of([health, signIn])!);
+    final run = runOf([health, signIn]);
     final afterAgent = (run.position as AgentStepDue).checked(ok);
     final asked = personDue(afterAgent).asked([message('1.1')])!;
     final done = personAsked(asked)
@@ -40,7 +47,7 @@ void main() {
   });
 
   test('only the named person, on the ask, answers a person step', () {
-    final run = TestRun.start(TestPlan.of([signIn])!);
+    final run = runOf([signIn]);
     final asked = personAsked(personDue(run).asked([message('1.1')])!);
     expect(
       asked.judged(someoneElse, message('1.1'), const ApprovedVerdict()),
@@ -54,7 +61,7 @@ void main() {
   });
 
   test('a reaction on any part of a split ask answers it', () {
-    final run = TestRun.start(TestPlan.of([signIn])!);
+    final run = runOf([signIn]);
     final asked = personAsked(
       personDue(run).asked([message('1.1'), message('1.2')])!,
     );
@@ -63,7 +70,7 @@ void main() {
   });
 
   test('a late reaction on an earlier ask does not answer the next', () {
-    final run = TestRun.start(TestPlan.of([signIn, openThread])!);
+    final run = runOf([signIn, openThread]);
     final first = personAsked(personDue(run).asked([message('1.1')])!);
     final second = personAsked(
       personDue(first.judged(nick, message('1.1'), const ApprovedVerdict())!)
@@ -73,19 +80,19 @@ void main() {
   });
 
   test('an ask with no messages is not asked', () {
-    final run = TestRun.start(TestPlan.of([signIn])!);
+    final run = runOf([signIn]);
     expect(personDue(run).asked(const []), isNull);
   });
 
   test('an ask posted only partway stops the run', () {
-    final run = TestRun.start(TestPlan.of([signIn, health])!);
+    final run = runOf([signIn, health]);
     final stopped = personDue(run).notDelivered([message('1.1')]).position;
     expect(stopped, isA<RunStopped>());
     expect((stopped as RunStopped).run.outcomes.single, isA<AskNotDelivered>());
   });
 
   test('a held-off person step stops the run there', () {
-    final run = TestRun.start(TestPlan.of([signIn, health])!);
+    final run = runOf([signIn, health]);
     final asked = personAsked(personDue(run).asked([message('1.1')])!);
     final stopped = asked
         .judged(nick, message('1.1'), const HeldOffVerdict())!
@@ -94,7 +101,7 @@ void main() {
   });
 
   test('a failed agent check stops the run before the person is asked', () {
-    final due = TestRun.start(TestPlan.of([health, signIn])!).position;
+    final due = runOf([health, signIn]).position;
     final run = (due as AgentStepDue).checked(
       const Ran(WebResponse(status: 502)),
     );

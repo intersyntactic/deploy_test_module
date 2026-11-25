@@ -4,3 +4,4 @@ library;
 
 export 'src/test_plan.dart';
 export 'src/test_run.dart';
+export 'src/results_post.dart';
