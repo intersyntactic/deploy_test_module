@@ -158,6 +158,15 @@ final class Reacted extends RunEvent {
   final VerdictOnShownMessage verdict;
 }
 
+/// Posting the results of a run that is over ended with [outcome]: the
+/// messages that posted, in order, when it [Ran].
+final class ResultsPostingEnded extends RunEvent {
+  const ResultsPostingEnded(this.outcome);
+
+  /// What posting the results gave.
+  final Outcome<List<SourceMessageId>> outcome;
+}
+
 /// The process restarted, so whatever was in flight before it never reports
 /// back. Handed to every saved run before any other event.
 final class Restarted extends RunEvent {
@@ -175,10 +184,16 @@ final class Restarted extends RunEvent {
 /// Whoever holds a run saves each new one before doing what its [position]
 /// says: carry out the fetch of an [AgentCheckSent], post the ask of a
 /// [PersonAskSent], post the results of a [RunOver]. A saved run that says
-/// something is sent may not have sent it, which is why [Restarted] ends
-/// it rather than sending again.
+/// a check or ask is sent may not have sent it, which is why [Restarted]
+/// ends it rather than sending again. Results are only text, so a
+/// [Restarted] run that is over and not yet [RunReported] posts them again.
 final class TestRun {
-  const TestRun._(this.config, this.outcomes, this._askedIn);
+  const TestRun._(
+    this.config,
+    this.outcomes,
+    this._askedIn, [
+    this._resultsPosted = false,
+  ]);
 
   /// A run of [config]'s plan with no step done yet.
   factory TestRun.start(ProjectTestConfig config) =>
@@ -198,9 +213,15 @@ final class TestRun {
   /// ```
   ///
   /// `askedIn` is there only while a person step's ask has posted and its
-  /// person has not answered.
+  /// person has not answered; `"resultsPosted": true` only once a run that
+  /// is over has posted its results.
   factory TestRun.fromJson(JsonObject json) {
-    onlyFields(json, const {'config', 'outcomes', 'askedIn'}, 'a saved run');
+    onlyFields(json, const {
+      'config',
+      'outcomes',
+      'askedIn',
+      'resultsPosted',
+    }, 'a saved run');
     final config = ProjectTestConfig.fromJson(json.object('config'));
     final outcomes = List<StepOutcome>.unmodifiable([
       for (final (i, outcome) in json.objects('outcomes').indexed)
@@ -214,11 +235,25 @@ final class TestRun {
               (throw JsonFieldException('askedIn[$i]', 'a message id')),
       ]),
     };
+    final resultsPosted = switch (json.booleanOrNull('resultsPosted')) {
+      null => false,
+      true => true,
+      false => throw JsonFieldException(
+        'resultsPosted',
+        'true, or no field at all',
+      ),
+    };
     if (_whyNotReachable(config.plan.steps, outcomes, askedIn)
         case final why?) {
       throw FormatException('not a run this plan can reach: $why');
     }
-    return TestRun._(config, outcomes, askedIn);
+    final run = TestRun._(config, outcomes, askedIn, resultsPosted);
+    if (resultsPosted && run._overPosition == null) {
+      throw const FormatException(
+        'not a run this plan can reach: resultsPosted on a run not over',
+      );
+    }
+    return run;
   }
 
   /// This run as JSON, as [TestRun.fromJson] reads it back.
@@ -226,6 +261,7 @@ final class TestRun {
     'config': config.toJson(),
     'outcomes': [for (final outcome in outcomes) _outcomeToJson(outcome)],
     'askedIn': ?_askedIn?.map((id) => id.value).toList(),
+    if (_resultsPosted) 'resultsPosted': true,
   });
 
   /// Why [outcomes] and [askedIn] are not a run of [steps] that [start] and
@@ -289,12 +325,16 @@ final class TestRun {
   /// asked.
   final List<SourceMessageId>? _askedIn;
 
+  /// Whether the run is over and its results have posted.
+  final bool _resultsPosted;
+
   /// The steps, in order.
   List<TestStep> get steps => config.plan.steps;
 
-  /// The run after [event], or null when [event] changes nothing here, such
-  /// as a reaction from someone other than the step's person, or a fetch
-  /// coming back when no check is in flight.
+  /// The run after [event], to save and then act on, or null when there is
+  /// nothing to do: a reaction from someone other than the step's person, a
+  /// fetch coming back when no check is in flight, or a results post that
+  /// did not wholly post, which the next [Restarted] posts again.
   TestRun? after(RunEvent event) => switch ((position, event)) {
     (final AgentCheckSent p, FetchCameBack(:final outcome)) => p._checked(
       outcome,
@@ -309,18 +349,18 @@ final class TestRun {
       p._judged(from, to, verdict),
     (AgentCheckSent(), Restarted()) => _with(const AgentCheckResultLost()),
     (PersonAskSent(), Restarted()) => _with(const AskResultLost()),
+    (RunOver(), ResultsPostingEnded(outcome: Ran(output: [_, ...]))) =>
+      TestRun._(config, outcomes, null, true),
+    (RunOver(), Restarted()) => this,
     _ => null,
   };
 
-  /// Where the run is: a step in flight, or over.
+  /// Where the run is: a step in flight, over with its results to post, or
+  /// reported.
   RunPosition get position {
-    switch (outcomes) {
-      case [..., final NotPassingOutcome last]:
-        return RunNotPassed._(this, last);
-      case [..., final NotFinishedOutcome last]:
-        return RunNotFinished._(this, last);
+    if (_overPosition case final over?) {
+      return _resultsPosted ? RunReported._(over) : over;
     }
-    if (outcomes.length == steps.length) return RunPassed._(this);
     return switch ((steps[outcomes.length], _askedIn)) {
       (final AgentStep step, _) => AgentCheckSent._(this, step),
       (final PersonStep step, null) => PersonAskSent._(this, step),
@@ -331,6 +371,14 @@ final class TestRun {
       ),
     };
   }
+
+  /// How the run ended, or null while a step is in flight.
+  RunOver? get _overPosition => switch (outcomes) {
+    [..., final NotPassingOutcome last] => RunNotPassed._(this, last),
+    [..., final NotFinishedOutcome last] => RunNotFinished._(this, last),
+    _ when outcomes.length == steps.length => RunPassed._(this),
+    _ => null,
+  };
 
   TestRun _with(StepOutcome outcome) =>
       TestRun._(config, List.unmodifiable([...outcomes, outcome]), null);
@@ -495,11 +543,23 @@ final class PersonStepAsked extends RunPosition {
   }
 }
 
-/// The run is over: every step passed ([RunPassed]), a step finished with a
-/// result against the deploy ([RunNotPassed]), or a step never finished
-/// ([RunNotFinished]).
+/// The run is over and its results are to be posted, then handed back as
+/// [ResultsPostingEnded]: every step passed ([RunPassed]), a step finished
+/// with a result against the deploy ([RunNotPassed]), or a step never
+/// finished ([RunNotFinished]).
 sealed class RunOver extends RunPosition {
   const RunOver();
+}
+
+/// The run is [over] and its results have posted: nothing is left to do.
+final class RunReported extends RunPosition {
+  const RunReported._(this.over);
+
+  /// How it ended.
+  final RunOver over;
+
+  @override
+  TestRun get run => over.run;
 }
 
 /// Every step passed.
