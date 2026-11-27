@@ -25,6 +25,7 @@ String resultsPostText(RunOver over) {
         AgentCheckCutOff() => 'was cut off before a whole response came back.',
         AgentCheckNotRun() => 'was never run, so this says nothing about the deploy.',
         AskNotDelivered() => 'was never fully asked, so this says nothing about the deploy.',
+        AgentCheckResultLost() || AskResultLost() => 'was interrupted by a restart, so this says nothing about the deploy.',
       }}",
   };
   return [
@@ -58,4 +59,7 @@ String _outcomeText(StepOutcome outcome) => switch (outcome) {
   AskNotDelivered(:final posted) when posted.isEmpty =>
     "not asked, the ask didn't post",
   AskNotDelivered() => 'not asked, the ask only partly posted',
+  AgentCheckResultLost() =>
+    'interrupted by a restart before its result came back',
+  AskResultLost() => 'interrupted by a restart while being asked',
 };
