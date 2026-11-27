@@ -1,3 +1,5 @@
+import 'package:checked_json/checked_json.dart'
+    show JsonFieldException, JsonObject;
 import 'package:is_airlock_api/is_airlock_api.dart' show WebFetch;
 import 'package:is_annotation_shapes/is_annotation_shapes.dart'
     show
@@ -11,6 +13,7 @@ import 'package:is_effects/is_effects.dart'
     show NothingRan, Outcome, Ran, StoppedPartway, WebResponse;
 import 'package:is_shapes/is_shapes.dart' show ActorId;
 
+import 'strict_json.dart';
 import 'test_plan.dart';
 
 /// What came of one step: it passed ([PassingOutcome]), it finished with a
@@ -181,6 +184,101 @@ final class TestRun {
   factory TestRun.start(ProjectTestConfig config) =>
       TestRun._(config, const [], null);
 
+  /// The run [json] holds, as [toJson] wrote it, read strictly: a field
+  /// missing, extra or of the wrong type, an unknown outcome, or outcomes
+  /// that [start] and [after] could never have reached, is a
+  /// [FormatException].
+  ///
+  /// ```json
+  /// {
+  ///   "config": {"project": "slack-relay", "deployedTo": "…", "steps": […]},
+  ///   "outcomes": [{"outcome": "agentCheckHeld"}],
+  ///   "askedIn": ["C0001|1700000000.000100"]
+  /// }
+  /// ```
+  ///
+  /// `askedIn` is there only while a person step's ask has posted and its
+  /// person has not answered.
+  factory TestRun.fromJson(JsonObject json) {
+    onlyFields(json, const {'config', 'outcomes', 'askedIn'}, 'a saved run');
+    final config = ProjectTestConfig.fromJson(json.object('config'));
+    final outcomes = List<StepOutcome>.unmodifiable([
+      for (final (i, outcome) in json.objects('outcomes').indexed)
+        _outcomeFromJson(outcome, 'outcomes[$i]'),
+    ]);
+    final askedIn = switch (json.stringsOrNull('askedIn')) {
+      null => null,
+      final ids => List<SourceMessageId>.unmodifiable([
+        for (final (i, id) in ids.indexed)
+          SourceMessageId.parse(id) ??
+              (throw JsonFieldException('askedIn[$i]', 'a message id')),
+      ]),
+    };
+    if (_whyNotReachable(config.plan.steps, outcomes, askedIn)
+        case final why?) {
+      throw FormatException('not a run this plan can reach: $why');
+    }
+    return TestRun._(config, outcomes, askedIn);
+  }
+
+  /// This run as JSON, as [TestRun.fromJson] reads it back.
+  JsonObject toJson() => JsonObject.of({
+    'config': config.toJson(),
+    'outcomes': [for (final outcome in outcomes) _outcomeToJson(outcome)],
+    'askedIn': ?_askedIn?.map((id) => id.value).toList(),
+  });
+
+  /// Why [outcomes] and [askedIn] are not a run of [steps] that [start] and
+  /// [after] could reach, or null when they are.
+  static String? _whyNotReachable(
+    List<TestStep> steps,
+    List<StepOutcome> outcomes,
+    List<SourceMessageId>? askedIn,
+  ) {
+    if (outcomes.length > steps.length) {
+      return '${outcomes.length} outcomes for ${steps.length} steps';
+    }
+    for (final (i, outcome) in outcomes.indexed) {
+      if (!_fits(steps[i], outcome)) {
+        return 'outcomes[$i] is not an outcome of step ${i + 1}';
+      }
+      if (i < outcomes.length - 1 && outcome is! PassingOutcome) {
+        return 'outcomes[$i] stopped the run, yet more follow';
+      }
+    }
+    if (askedIn == null) return null;
+    final stillGoing = switch (outcomes) {
+      [] || [..., PassingOutcome()] => outcomes.length < steps.length,
+      _ => false,
+    };
+    return switch ((askedIn, stillGoing)) {
+      ([], _) => 'askedIn is empty',
+      (_, false) => 'askedIn on a run that is over',
+      _ when steps[outcomes.length] is! PersonStep =>
+        'askedIn while an agent step is in flight',
+      _ => null,
+    };
+  }
+
+  /// Whether [outcome] is one [step] can have: of its kind, and from its
+  /// person.
+  static bool _fits(TestStep step, StepOutcome outcome) =>
+      switch ((step, outcome)) {
+        (
+          AgentStep(),
+          AgentCheckHeld() ||
+              AgentCheckFailed() ||
+              AgentCheckNotRun() ||
+              AgentCheckCutOff() ||
+              AgentCheckResultLost(),
+        ) =>
+          true,
+        (PersonStep(:final person), PersonApproved(:final by)) ||
+        (PersonStep(:final person), PersonHeldOff(:final by)) => by == person,
+        (PersonStep(), AskNotDelivered() || AskResultLost()) => true,
+        _ => false,
+      };
+
   /// What is being run, and against which site.
   final ProjectTestConfig config;
 
@@ -237,6 +335,82 @@ final class TestRun {
   TestRun _with(StepOutcome outcome) =>
       TestRun._(config, List.unmodifiable([...outcomes, outcome]), null);
 }
+
+/// The names an outcome's `outcome` field takes on the wire.
+const _agentCheckHeld = 'agentCheckHeld';
+const _agentCheckFailed = 'agentCheckFailed';
+const _agentCheckNotRun = 'agentCheckNotRun';
+const _agentCheckCutOff = 'agentCheckCutOff';
+const _agentCheckResultLost = 'agentCheckResultLost';
+const _personApproved = 'personApproved';
+const _personHeldOff = 'personHeldOff';
+const _askNotDelivered = 'askNotDelivered';
+const _askResultLost = 'askResultLost';
+
+/// The outcome [json], at [field] in a saved run, read strictly.
+StepOutcome _outcomeFromJson(JsonObject json, String field) {
+  ActorId by() =>
+      ActorId.parse(json.string('by')) ??
+      (throw JsonFieldException('$field.by', 'an actor id'));
+  switch (json.string('outcome')) {
+    case _agentCheckHeld:
+      onlyFields(json, const {'outcome'}, field);
+      return const AgentCheckHeld();
+    case _agentCheckFailed:
+      onlyFields(json, const {'outcome', 'observed'}, field);
+      return AgentCheckFailed(json.string('observed'));
+    case _agentCheckNotRun:
+      onlyFields(json, const {'outcome', 'why'}, field);
+      return AgentCheckNotRun(json.string('why'));
+    case _agentCheckCutOff:
+      onlyFields(json, const {'outcome', 'why'}, field);
+      return AgentCheckCutOff(json.string('why'));
+    case _agentCheckResultLost:
+      onlyFields(json, const {'outcome'}, field);
+      return const AgentCheckResultLost();
+    case _personApproved:
+      onlyFields(json, const {'outcome', 'by'}, field);
+      return PersonApproved(by());
+    case _personHeldOff:
+      onlyFields(json, const {'outcome', 'by'}, field);
+      return PersonHeldOff(by());
+    case _askNotDelivered:
+      onlyFields(json, const {'outcome', 'posted'}, field);
+      return AskNotDelivered(
+        List.unmodifiable([
+          for (final (i, id) in json.strings('posted').indexed)
+            SourceMessageId.parse(id) ??
+                (throw JsonFieldException('$field.posted[$i]', 'a message id')),
+        ]),
+      );
+    case _askResultLost:
+      onlyFields(json, const {'outcome'}, field);
+      return const AskResultLost();
+    case final outcome:
+      throw FormatException('$field.outcome is not an outcome: $outcome');
+  }
+}
+
+/// [outcome] as JSON, as [_outcomeFromJson] reads it back.
+JsonObject _outcomeToJson(StepOutcome outcome) => JsonObject.of(
+  switch (outcome) {
+    AgentCheckHeld() => {'outcome': _agentCheckHeld},
+    AgentCheckFailed(:final observed) => {
+      'outcome': _agentCheckFailed,
+      'observed': observed,
+    },
+    AgentCheckNotRun(:final why) => {'outcome': _agentCheckNotRun, 'why': why},
+    AgentCheckCutOff(:final why) => {'outcome': _agentCheckCutOff, 'why': why},
+    AgentCheckResultLost() => {'outcome': _agentCheckResultLost},
+    PersonApproved(:final by) => {'outcome': _personApproved, 'by': by.value},
+    PersonHeldOff(:final by) => {'outcome': _personHeldOff, 'by': by.value},
+    AskNotDelivered(:final posted) => {
+      'outcome': _askNotDelivered,
+      'posted': [for (final id in posted) id.value],
+    },
+    AskResultLost() => {'outcome': _askResultLost},
+  },
+);
 
 /// Where a [TestRun] is: a step in flight, or over ([RunOver]). Only
 /// [TestRun.after] moves a run on, so only the step in flight can be
