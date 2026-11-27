@@ -22,6 +22,7 @@ import 'package:is_web_address_vocabulary/is_web_address_vocabulary.dart'
         encodeOrigin,
         encodeWebPath;
 
+import 'strict_json.dart';
 import 'test_run.dart'
     show
         AgentCheckCutOff,
@@ -82,7 +83,7 @@ final class ProjectTestConfig {
   /// The config [json] holds, read strictly: a field missing, extra or of
   /// the wrong type, an unknown step, or no steps, is a [FormatException].
   factory ProjectTestConfig.fromJson(JsonObject json) {
-    _onlyFields(json, const {'project', 'deployedTo', 'steps'}, 'the config');
+    onlyFields(json, const {'project', 'deployedTo', 'steps'}, 'the config');
     final project = DeployedProjectName.parse(json.string('project'));
     if (project == null) {
       throw JsonFieldException('project', 'a project name');
@@ -125,7 +126,7 @@ const _person = 'person';
 TestStep _stepFromJson(JsonObject json, String field) {
   switch (json.string('step')) {
     case _responseStatusIs:
-      _onlyFields(json, const {'step', 'path', 'status'}, field);
+      onlyFields(json, const {'step', 'path', 'status'}, field);
       final status = HttpStatusCode.parse(json.integer('status'));
       if (status == null) {
         throw JsonFieldException('$field.status', 'a status from 100 to 599');
@@ -137,7 +138,7 @@ TestStep _stepFromJson(JsonObject json, String field) {
         ),
       );
     case _responseBodyContains:
-      _onlyFields(json, const {'step', 'path', 'text'}, field);
+      onlyFields(json, const {'step', 'path', 'text'}, field);
       return AgentStep(
         ResponseBodyContains(
           path: decodeWebPath(json.raw('path'), '$field.path'),
@@ -145,7 +146,7 @@ TestStep _stepFromJson(JsonObject json, String field) {
         ),
       );
     case _person:
-      _onlyFields(json, const {'step', 'person', 'instruction'}, field);
+      onlyFields(json, const {'step', 'person', 'instruction'}, field);
       final person = ActorId.parse(json.string('person'));
       if (person == null) {
         throw JsonFieldException('$field.person', 'an actor id');
@@ -177,16 +178,6 @@ JsonObject _stepToJson(TestStep step) => JsonObject.of(switch (step) {
     'instruction': instruction,
   },
 });
-
-/// Throws a [FormatException] naming [what] and the first key of [json]
-/// not in [fields].
-void _onlyFields(JsonObject json, Set<String> fields, String what) {
-  for (final key in json.keys) {
-    if (!fields.contains(key)) {
-      throw FormatException('`$key` is not a field of $what');
-    }
-  }
-}
 
 /// The steps of a test, in the order they are done. Never empty.
 final class TestPlan {
