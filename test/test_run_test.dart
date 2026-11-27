@@ -95,7 +95,41 @@ void main() {
     expect(asking.after(ok), isNull);
     final over = asking.after(postedIn(['1.1']))!.after(approves('1.1'))!;
     expect(over.after(ok), isNull);
-    expect(over.after(const Restarted()), isNull);
+    expect(checking.after(ResultsPostingEnded(Ran([message('9.1')]))), isNull);
+    final reported = over.after(ResultsPostingEnded(Ran([message('9.1')])))!;
+    expect(reported.after(ResultsPostingEnded(Ran([message('9.2')]))), isNull);
+    expect(reported.after(const Restarted()), isNull);
+  });
+
+  group('the results of a run that is over', () {
+    final over = runOf([health]).after(ok)!;
+    final reported = over.after(ResultsPostingEnded(Ran([message('9.1')])))!;
+
+    test('are to post until they wholly post', () {
+      expect(over.position, isA<RunPassed>());
+      expect(reported.position, isA<RunReported>());
+      expect((reported.position as RunReported).over, isA<RunPassed>());
+    });
+
+    test('post again after a restart that found them unposted', () {
+      expect(over.after(const Restarted())!.position, isA<RunPassed>());
+    });
+
+    test('that did not wholly post wait for the next restart', () {
+      expect(
+        over.after(const ResultsPostingEnded(NothingRan('chat down'))),
+        isNull,
+      );
+      expect(
+        over.after(
+          ResultsPostingEnded(
+            StoppedPartway(why: 'rate limited', done: [message('9.1')]),
+          ),
+        ),
+        isNull,
+      );
+      expect(over.after(const ResultsPostingEnded(Ran([]))), isNull);
+    });
   });
 
   test('an ask posted in no messages is not delivered', () {

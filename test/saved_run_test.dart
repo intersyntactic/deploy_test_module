@@ -72,6 +72,9 @@ void main() {
         ),
       )!,
       'ask lost to a restart': asking.after(const Restarted())!,
+      'reported': asked
+          .after(Reacted(nick, message('1.1'), const ApprovedVerdict()))!
+          .after(ResultsPostingEnded(Ran([message('9.1')])))!,
     };
     for (final MapEntry(key: name, value: run) in runs.entries) {
       test(name, () {
@@ -182,6 +185,26 @@ void main() {
     refuses(
       'a message id with whitespace',
       edited(asked, 'askedIn', ['C0001 1.1']),
+    );
+    refuses(
+      'resultsPosted on a run not over',
+      edited(asked, 'resultsPosted', true),
+    );
+    refuses(
+      'resultsPosted written false',
+      edited(
+        start.after(const FetchCameBack(NothingRan('denied')))!,
+        'resultsPosted',
+        false,
+      ),
+    );
+  });
+
+  test('resultsPosted on a run that is over reads as reported', () {
+    final over = start.after(const FetchCameBack(NothingRan('denied')))!;
+    expect(
+      TestRun.fromJson(edited(over, 'resultsPosted', true)).position,
+      isA<RunReported>(),
     );
   });
 }
