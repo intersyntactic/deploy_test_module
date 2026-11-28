@@ -3,11 +3,13 @@ import 'package:is_annotation_shapes/is_annotation_shapes.dart'
 import 'package:is_conversation_vocabulary/is_conversation_vocabulary.dart'
     show SourceMessageId;
 import 'package:is_deploy_test_module/is_deploy_test_module.dart';
-import 'package:is_effects/is_effects.dart'
-    show NothingRan, Ran, StoppedPartway, TextBody, WebResponse;
+import 'package:is_outcome_vocabulary/is_outcome_vocabulary.dart'
+    show NothingRan, Ran, StoppedPartway;
 import 'package:is_shapes/is_shapes.dart' show ActorId;
 import 'package:is_web_address_vocabulary/is_web_address_vocabulary.dart'
     show Origin, WebPath;
+import 'package:is_web_request_vocabulary/is_web_request_vocabulary.dart'
+    show TextBody, WebResponse;
 import 'package:test/test.dart';
 
 void main() {

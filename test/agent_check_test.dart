@@ -1,15 +1,10 @@
 import 'package:is_deploy_test_module/is_deploy_test_module.dart';
-import 'package:is_effects/is_effects.dart'
-    show
-        BodyToKeep,
-        NoBody,
-        NothingRan,
-        Ran,
-        StoppedPartway,
-        TextBody,
-        WebResponse;
+import 'package:is_outcome_vocabulary/is_outcome_vocabulary.dart'
+    show NothingRan, Ran, StoppedPartway;
 import 'package:is_web_address_vocabulary/is_web_address_vocabulary.dart'
     show Origin, WebPath;
+import 'package:is_web_request_vocabulary/is_web_request_vocabulary.dart'
+    show BodyToKeep, NoBody, TextBody, WebResponse;
 import 'package:test/test.dart';
 
 void main() {
