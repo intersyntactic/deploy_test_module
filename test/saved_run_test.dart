@@ -3,7 +3,7 @@ import 'dart:convert' show jsonEncode;
 import 'package:checked_json/checked_json.dart' show JsonObject;
 import 'package:is_annotation_shapes/is_annotation_shapes.dart'
     show ApprovedVerdict, HeldOffVerdict;
-import 'package:is_conversation_shapes/is_conversation_shapes.dart'
+import 'package:is_conversation_vocabulary/is_conversation_vocabulary.dart'
     show SourceMessageId;
 import 'package:is_deploy_test_module/is_deploy_test_module.dart';
 import 'package:is_effects/is_effects.dart'

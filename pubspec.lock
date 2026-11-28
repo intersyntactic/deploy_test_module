@@ -45,10 +45,10 @@ packages:
     dependency: "direct main"
     description:
       name: checked_json
-      sha256: "6e98ee4c293ee7ed5d1a76411823c7b43aee1fa969b63cb896c519814dbdcfbf"
+      sha256: "0538c8336bfcac44a0ee6f652205ec63bc53f05a5918ca628e4e5b005bbf6f28"
       url: "https://pub.dev"
     source: hosted
-    version: "0.2.1"
+    version: "0.3.0"
   cli_config:
     dependency: transitive
     description:
@@ -157,18 +157,18 @@ packages:
     dependency: "direct main"
     description:
       name: is_airlock_api
-      sha256: "9b67008604c7cf38ddf737f9905e557bf434fa5cf4c8bfe6dfcf1eb6e1336cc9"
+      sha256: f0aa9040aca43e888812636834311e6e33a3a1d9b415a60ec167418058684f7e
       url: "https://pub.dev"
     source: hosted
-    version: "0.21.0"
+    version: "0.24.0"
   is_annotation_shapes:
     dependency: "direct main"
     description:
       name: is_annotation_shapes
-      sha256: eaba8ab69040d0612d12bbec7315b567015d4369dd19c91c2b4dd14223c7a2f5
+      sha256: "620e2f3f5f78d1eeaae23b083f32160e6dec79d3959c2034b5bb4c0989e20c42"
       url: "https://pub.dev"
     source: hosted
-    version: "0.3.2"
+    version: "0.4.0"
   is_content_id:
     dependency: transitive
     description:
@@ -177,38 +177,30 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "0.2.0"
-  is_conversation_reply_vocabulary:
-    dependency: transitive
-    description:
-      name: is_conversation_reply_vocabulary
-      sha256: "2c2f7d8e460a15ace0fcdd92c2a22aed51e8f92dedd507902d310a70573e50cf"
-      url: "https://pub.dev"
-    source: hosted
-    version: "0.1.0"
-  is_conversation_shapes:
+  is_conversation_vocabulary:
     dependency: "direct main"
     description:
-      name: is_conversation_shapes
-      sha256: "9cc49a7f1bf6ddb077a86516533b706b6c2ac08856b036a7cfcec67286ba09c1"
+      name: is_conversation_vocabulary
+      sha256: b252a0b7254cf40142c353cdb68e8d926b579021c27033922f3a624204b4c27f
       url: "https://pub.dev"
     source: hosted
-    version: "0.8.3"
+    version: "0.1.1"
   is_effects:
     dependency: "direct main"
     description:
       name: is_effects
-      sha256: "2d1014ac6b36a7658910a0278b573277fe3cac4be0533e597734bd89c908727a"
+      sha256: c03f9ba98bdc717846f79dcf4a10edadaa1397e2019f025aa85187fbf3925b49
       url: "https://pub.dev"
     source: hosted
-    version: "0.17.0"
+    version: "0.18.0"
   is_model_vocabulary:
     dependency: transitive
     description:
       name: is_model_vocabulary
-      sha256: "48927abc9d91422f92e370dc8a7698a2ee29c4bfa44712f5e88c9ab126185e57"
+      sha256: "509e34dfff4058715d21bb506ef95a9bf14c82779b1001a8e25933a8e0a0535f"
       url: "https://pub.dev"
     source: hosted
-    version: "0.2.0"
+    version: "0.3.0"
   is_path_confinement:
     dependency: transitive
     description:
