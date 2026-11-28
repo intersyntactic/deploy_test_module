@@ -7,7 +7,7 @@ import 'package:is_annotation_shapes/is_annotation_shapes.dart'
         HeldOffVerdict,
         ProposedCorrectionVerdict,
         VerdictOnShownMessage;
-import 'package:is_conversation_shapes/is_conversation_shapes.dart'
+import 'package:is_conversation_vocabulary/is_conversation_vocabulary.dart'
     show SourceMessageId;
 import 'package:is_effects/is_effects.dart'
     show NothingRan, Outcome, Ran, StoppedPartway, WebResponse;
