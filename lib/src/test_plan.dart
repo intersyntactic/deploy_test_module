@@ -1,17 +1,8 @@
 import 'package:checked_json/checked_json.dart'
     show JsonFieldException, JsonObject;
 import 'package:is_airlock_api/is_airlock_api.dart' show WebFetch;
-import 'package:is_effects/is_effects.dart'
-    show
-        BodyToKeep,
-        BytesBody,
-        NoBody,
-        Outcome,
-        Ran,
-        NothingRan,
-        StoppedPartway,
-        TextBody,
-        WebResponse;
+import 'package:is_outcome_vocabulary/is_outcome_vocabulary.dart'
+    show Outcome, Ran, NothingRan, StoppedPartway;
 import 'package:is_shapes/is_shapes.dart' show ActorId;
 import 'package:is_web_address_vocabulary/is_web_address_vocabulary.dart'
     show
@@ -21,6 +12,8 @@ import 'package:is_web_address_vocabulary/is_web_address_vocabulary.dart'
         decodeWebPath,
         encodeOrigin,
         encodeWebPath;
+import 'package:is_web_request_vocabulary/is_web_request_vocabulary.dart'
+    show BodyToKeep, BytesBody, NoBody, TextBody, WebResponse;
 
 import 'strict_json.dart';
 import 'test_run.dart'

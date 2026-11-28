@@ -9,9 +9,11 @@ import 'package:is_annotation_shapes/is_annotation_shapes.dart'
         VerdictOnShownMessage;
 import 'package:is_conversation_vocabulary/is_conversation_vocabulary.dart'
     show SourceMessageId;
-import 'package:is_effects/is_effects.dart'
-    show NothingRan, Outcome, Ran, StoppedPartway, WebResponse;
+import 'package:is_outcome_vocabulary/is_outcome_vocabulary.dart'
+    show NothingRan, Outcome, Ran, StoppedPartway;
 import 'package:is_shapes/is_shapes.dart' show ActorId;
+import 'package:is_web_request_vocabulary/is_web_request_vocabulary.dart'
+    show WebResponse;
 
 import 'strict_json.dart';
 import 'test_plan.dart';
